@@ -247,6 +247,30 @@ def vapi_finish():
     return jsonify({"results": results})
 
 
+@app.route("/vapi/transcript", methods=["POST"])
+def vapi_transcript():
+    """
+    Assistant-level server message webhook - configured to send only final
+    transcript lines. Logs each one to call_turns so the dashboard's live
+    transcript view works for Vapi-driven calls too.
+    """
+    payload = request.get_json(force=True, silent=True) or {}
+    message = payload.get("message", {})
+    if message.get("type") not in ("transcript", 'transcript[transcriptType="final"]'):
+        return jsonify({"ok": True})
+    if message.get("transcriptType") not in (None, "final"):
+        return jsonify({"ok": True})
+
+    call_info = message.get("call") or {}
+    call_sid = call_info.get("id", "")
+    role = message.get("role", "")
+    text = message.get("transcript", "")
+    if call_sid and text:
+        log_turn(call_sid, "caller" if role == "user" else "agent", text)
+
+    return jsonify({"ok": True})
+
+
 # ---------------------------------------------------------------------------
 # health check — also doubles as the dashboard's wake/status ping.
 # CORS-open since the dashboard (a different origin) polls this directly.
