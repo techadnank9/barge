@@ -26,7 +26,7 @@ from flask import Flask, request, Response, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
-from store import add_entry, add_turn  # noqa: E402
+from store import add_entry, add_turn, has_turns  # noqa: E402
 
 app = Flask(__name__)
 
@@ -250,23 +250,45 @@ def vapi_finish():
 @app.route("/vapi/transcript", methods=["POST"])
 def vapi_transcript():
     """
-    Assistant-level server message webhook - configured to send only final
-    transcript lines. Logs each one to call_turns so the dashboard's live
-    transcript view works for Vapi-driven calls too.
+    Assistant-level server message webhook. Two message types land here:
+    - "transcript" (transcriptType=final): logged live, turn by turn, as the
+      call happens - this is what makes the dashboard transcript real-time.
+    - "end-of-call-report": a safety-net backfill, in case any live events
+      were dropped. Only fills in if this call has zero turns logged yet, to
+      avoid duplicating what already came through live.
     """
     payload = request.get_json(force=True, silent=True) or {}
     message = payload.get("message", {})
-    if message.get("type") not in ("transcript", 'transcript[transcriptType="final"]'):
-        return jsonify({"ok": True})
-    if message.get("transcriptType") not in (None, "final"):
-        return jsonify({"ok": True})
-
+    msg_type = message.get("type")
     call_info = message.get("call") or {}
     call_sid = call_info.get("id", "")
-    role = message.get("role", "")
-    text = message.get("transcript", "")
-    if call_sid and text:
-        log_turn(call_sid, "caller" if role == "user" else "agent", text)
+
+    if msg_type == "transcript":
+        if message.get("transcriptType") != "final":
+            return jsonify({"ok": True})
+        role = message.get("role", "")
+        text = message.get("transcript", "")
+        if call_sid and text:
+            log_turn(call_sid, "caller" if role == "user" else "agent", text)
+        return jsonify({"ok": True})
+
+    if msg_type == "end-of-call-report":
+        if not call_sid:
+            return jsonify({"ok": True})
+        try:
+            if has_turns(call_sid):
+                return jsonify({"ok": True})
+        except Exception as e:
+            log_event("vapi-transcript-error", f"has_turns check failed for {call_sid}: {e}")
+            return jsonify({"ok": True})
+
+        artifact = message.get("artifact") or {}
+        for m in artifact.get("messages") or []:
+            role = m.get("role")
+            text = (m.get("message") or "").strip()
+            if role in ("bot", "user") and text:
+                log_turn(call_sid, "caller" if role == "user" else "agent", text)
+        return jsonify({"ok": True})
 
     return jsonify({"ok": True})
 

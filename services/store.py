@@ -59,3 +59,10 @@ def add_turn(call_sid: str, speaker: str, text: str) -> dict:
     row = {"call_sid": call_sid, "speaker": speaker, "text": text}
     res = _client.table("call_turns").insert(row).execute()
     return res.data[0]
+
+
+def has_turns(call_sid: str) -> bool:
+    """Whether any turns are already logged for this call."""
+    res = (_client.table("call_turns").select("id")
+           .eq("call_sid", call_sid).limit(1).execute())
+    return bool(res.data)
