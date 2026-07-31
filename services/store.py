@@ -46,3 +46,14 @@ def recent_entries(limit: int = 5) -> list[dict]:
            .select("*").order("created_at", desc=True)
            .limit(limit).execute())
     return res.data
+
+
+def add_turn(call_sid: str, speaker: str, text: str) -> dict:
+    """
+    Log one turn of a phone call transcript. `speaker` is 'caller' or 'agent'.
+    Best-effort: the live transcript is a nice-to-have, never lets a logging
+    failure break the call, so callers should wrap this in try/except.
+    """
+    row = {"call_sid": call_sid, "speaker": speaker, "text": text}
+    res = _client.table("call_turns").insert(row).execute()
+    return res.data[0]

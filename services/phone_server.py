@@ -23,7 +23,7 @@ from flask import Flask, request, Response
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
-from store import add_entry  # noqa: E402
+from store import add_entry, add_turn  # noqa: E402
 
 app = Flask(__name__)
 
@@ -58,6 +58,18 @@ def gather(prompt: str, action: str) -> str:
 
 def sess(call_sid: str) -> dict:
     return SESSIONS.setdefault(call_sid, {"section": "verse", "reps": 0})
+
+
+def log_turn(call_sid: str, speaker: str, text: str) -> None:
+    """
+    Best-effort live transcript write. Never lets a logging failure break the
+    call — the transcript is a nice-to-have for the dashboard, not something
+    the honesty rule depends on.
+    """
+    try:
+        add_turn(call_sid, speaker, text)
+    except Exception as e:
+        print(f"[log_turn] failed for {call_sid}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +120,7 @@ def voice():
         "Hi! I'm your guitar coach. Tell me a song you want to play and sing, "
         "and I'll walk you through it. Which song?"
     )
+    log_turn(call_sid, "agent", greeting)
     return texml(gather(greeting, "/handle-song"))
 
 
@@ -121,17 +134,22 @@ def handle_song():
     heard = (request.form.get("SpeechResult") or "").strip()
 
     if not heard:
-        return texml(gather("Sorry, I didn't catch that. What song?", "/handle-song"))
+        line = "Sorry, I didn't catch that. What song?"
+        log_turn(call_sid, "agent", line)
+        return texml(gather(line, "/handle-song"))
+
+    log_turn(call_sid, "caller", heard)
 
     chart, source = get_chart(heard)
 
     if chart is None:
         # honest failure: couldn't find or generate. Offer a seeded fallback.
-        return texml(gather(
+        line = (
             f"I couldn't find chords for {heard}. I know Wonderwall, Let It Be, "
-            "and Three Little Birds well. Want one of those, or another song?",
-            "/handle-song",
-        ))
+            "and Three Little Birds well. Want one of those, or another song?"
+        )
+        log_turn(call_sid, "agent", line)
+        return texml(gather(line, "/handle-song"))
 
     s["chart"] = chart
     s["source"] = source
@@ -146,6 +164,7 @@ def handle_song():
                   "this as a common version. ")
     intro += (f"We'll start with the verse. First chord is {first}. "
               "Put your fingers there, and say ready when you want me to count you in.")
+    log_turn(call_sid, "agent", intro)
     return texml(gather(intro, "/handle-turn"))
 
 
@@ -160,7 +179,12 @@ def handle_turn():
     chart = s.get("chart")
 
     if not chart:
-        return texml(gather("Let's pick a song first. Which one?", "/handle-song"))
+        line = "Let's pick a song first. Which one?"
+        log_turn(call_sid, "agent", line)
+        return texml(gather(line, "/handle-song"))
+
+    if heard:
+        log_turn(call_sid, "caller", heard)
 
     # caller wants to wrap up -> go send the text
     if any(w in heard for w in ("done", "finish", "that's it", "text me", "send")):
@@ -190,6 +214,7 @@ def handle_turn():
     else:
         line += " Give it a go, then say 'again' or 'next'."
 
+    log_turn(call_sid, "agent", line)
     return texml(gather(line, "/handle-turn"))
 
 
@@ -204,7 +229,9 @@ def finish():
     caller = s.get("caller", "")
 
     if not chart:
-        return texml(say("We didn't get to a song this time. Call back anytime!") + "<Hangup/>")
+        line = "We didn't get to a song this time. Call back anytime!"
+        log_turn(call_sid, "agent", line)
+        return texml(say(line) + "<Hangup/>")
 
     body = build_sms_text(chart, s.get("hard_spot"))
     ok, detail = send_sms(caller, body)
@@ -224,6 +251,7 @@ def finish():
                "just now. Nothing was sent. You may need to verify your number "
                "first, or try calling back. Sorry about that!")
 
+    log_turn(call_sid, "agent", msg)
     return texml(say(msg) + "<Hangup/>")
 
 
