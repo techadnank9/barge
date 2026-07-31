@@ -26,7 +26,9 @@ from flask import Flask, request, Response, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
-from store import add_entry, add_turn, has_turns, set_call_chart  # noqa: E402
+from store import (  # noqa: E402
+    add_entry, add_turn, has_turns, set_call_chart, get_call_chart, has_entry_for_call,
+)
 
 app = Flask(__name__)
 
@@ -284,19 +286,37 @@ def vapi_transcript():
     if msg_type == "end-of-call-report":
         if not call_sid:
             return jsonify({"ok": True})
-        try:
-            if has_turns(call_sid):
-                return jsonify({"ok": True})
-        except Exception as e:
-            log_event("vapi-transcript-error", f"has_turns check failed for {call_sid}: {e}")
-            return jsonify({"ok": True})
 
-        artifact = message.get("artifact") or {}
-        for m in artifact.get("messages") or []:
-            role = m.get("role")
-            text = (m.get("message") or "").strip()
-            if role in ("bot", "user") and text:
-                log_turn(call_sid, "caller" if role == "user" else "agent", text)
+        # Transcript backfill - only if nothing came through live.
+        try:
+            if not has_turns(call_sid):
+                artifact = message.get("artifact") or {}
+                for m in artifact.get("messages") or []:
+                    role = m.get("role")
+                    text = (m.get("message") or "").strip()
+                    if role in ("bot", "user") and text:
+                        log_turn(call_sid, "caller" if role == "user" else "agent", text)
+        except Exception as e:
+            log_event("vapi-transcript-error", f"transcript backfill failed for {call_sid}: {e}")
+
+        # Practice-log fallback - the user wants every call to show up in the
+        # dashboard, not just ones that reached finish_session. If the call
+        # ended without a completed session (caller hung up before saying
+        # "done"), log it anyway from whatever chart was last looked up -
+        # marked as incomplete, never claiming a text was sent (honesty rule
+        # only applies to the SMS claim, not to whether the call is visible).
+        try:
+            if not has_entry_for_call(call_sid):
+                chart = get_call_chart(call_sid)
+                if chart:
+                    add_entry(
+                        "phone", chart["song"], chart.get("hard_spots", []),
+                        note="call ended before finishing - no text was sent",
+                        confident=chart.get("confident", True), call_sid=call_sid,
+                    )
+        except Exception as e:
+            log_event("vapi-finish-fallback-error", f"failed for {call_sid}: {e}")
+
         return jsonify({"ok": True})
 
     return jsonify({"ok": True})

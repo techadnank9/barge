@@ -81,3 +81,17 @@ def set_call_chart(call_sid: str, song: str, verse=None, chorus=None,
     }
     res = _client.table("call_charts").upsert(row, on_conflict="call_sid").execute()
     return res.data[0]
+
+
+def get_call_chart(call_sid: str) -> dict | None:
+    """The chart last looked up on this call, if any."""
+    res = (_client.table("call_charts").select("*")
+           .eq("call_sid", call_sid).limit(1).execute())
+    return res.data[0] if res.data else None
+
+
+def has_entry_for_call(call_sid: str) -> bool:
+    """Whether a practice_entries row already exists for this call."""
+    res = (_client.table("practice_entries").select("id")
+           .eq("call_sid", call_sid).limit(1).execute())
+    return bool(res.data)
