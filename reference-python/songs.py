@@ -113,6 +113,10 @@ def _generate_chart(name: str):
                     '{"title": str, "artist": str, "verse": [str], '
                     '"chorus": [str], "hard_spots": [str], "confident": bool}. '
                     "Give real, playable open or common chord names (e.g. G, Em7, Cadd9). "
+                    "IMPORTANT: verse and chorus are arrays where EACH ELEMENT IS EXACTLY "
+                    "ONE CHORD, e.g. [\"G\", \"D\", \"Em7\", \"Cadd9\"]. Never join multiple "
+                    "chords into a single string with dashes or slashes like \"G - D - Em7\" "
+                    "- that must be four separate array elements, not one. "
                     "Set confident=false if you are not certain these are the exact "
                     "chords for this specific song. Do not invent a song that "
                     "doesn't exist — if unknown, set confident=false and give a "
@@ -132,8 +136,24 @@ def _generate_chart(name: str):
     data.setdefault("chorus", [])
     data.setdefault("hard_spots", [])
     data.setdefault("confident", False)
+    data["verse"] = _split_chords(data["verse"])
+    data["chorus"] = _split_chords(data["chorus"])
     data["source"] = "generated"
     return data
+
+
+def _split_chords(chords: list) -> list:
+    """
+    Defensive normalization: the LLM sometimes ignores the schema and joins a
+    whole progression into one string like "G - D - Em7 - Cadd9" instead of
+    separate array elements. Split those back into individual chords so the
+    UI's one-card-per-chord display doesn't break.
+    """
+    out = []
+    for item in chords:
+        parts = [p.strip() for p in re.split(r"\s*-\s*", str(item)) if p.strip()]
+        out.extend(parts if len(parts) > 1 else [item])
+    return out
 
 
 def get_chart(name: str):
