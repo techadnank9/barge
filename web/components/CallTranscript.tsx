@@ -9,7 +9,7 @@ function formatTime(ts: string) {
   return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-export default function CallTranscript({ callSid }: { callSid: string }) {
+export default function CallTranscript({ callSid, full = false }: { callSid: string; full?: boolean }) {
   const [turns, setTurns] = useState<CallTurn[]>([]);
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState(false);
@@ -75,7 +75,10 @@ export default function CallTranscript({ callSid }: { callSid: string }) {
       ) : turns.length === 0 ? (
         <p className="px-4 py-4 text-sm text-zinc-400">No transcript recorded for this call.</p>
       ) : (
-        <div ref={scrollRef} className="max-h-72 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+        <div
+          ref={scrollRef}
+          className={`${full ? "" : "max-h-72"} overflow-y-auto px-4 py-3 flex flex-col gap-3`}
+        >
           {turns.map((t) => (
             <div
               key={t.id}

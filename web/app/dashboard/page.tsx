@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase, PracticeEntry } from "@/lib/supabase";
 import ServiceStatus from "@/components/ServiceStatus";
-import CallTranscript from "@/components/CallTranscript";
 
 const SOURCE_LABEL: Record<PracticeEntry["source"], string> = {
   phone: "Phone",
@@ -23,7 +22,6 @@ function formatTime(ts: string) {
 export default function Dashboard() {
   const [entries, setEntries] = useState<PracticeEntry[]>([]);
   const [freshId, setFreshId] = useState<number | null>(null);
-  const [openId, setOpenId] = useState<number | null>(null);
 
   useEffect(() => {
     supabase
@@ -85,60 +83,58 @@ export default function Dashboard() {
         <ul className="flex flex-col gap-3">
           {entries.map((e) => {
             const clickable = e.source === "phone" && !!e.call_sid;
-            const isOpen = openId === e.id;
-            return (
-              <li
-                key={e.id}
-                className={`rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5 transition-colors duration-1000 ${
-                  freshId === e.id ? "!bg-amber-50 dark:!bg-amber-950/40" : ""
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => clickable && setOpenId(isOpen ? null : e.id)}
-                  disabled={!clickable}
-                  className={`w-full text-left ${clickable ? "cursor-pointer" : "cursor-default"}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${SOURCE_STYLE[e.source]}`}
-                      >
-                        {SOURCE_LABEL[e.source]}
+            const content = (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${SOURCE_STYLE[e.source]}`}
+                    >
+                      {SOURCE_LABEL[e.source]}
+                    </span>
+                    <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
+                      {e.song}
+                    </h2>
+                    {!e.confident && (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        unverified chords
                       </span>
-                      <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-50">
-                        {e.song}
-                      </h2>
-                      {!e.confident && (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                          unverified chords
-                        </span>
-                      )}
-                      {clickable && (
-                        <span className="text-xs text-zinc-400">
-                          {isOpen ? "hide transcript ▲" : "view transcript ▾"}
-                        </span>
-                      )}
-                    </div>
-                    <time className="text-sm text-zinc-400 shrink-0">
-                      {formatTime(e.created_at)}
-                    </time>
+                    )}
+                    {clickable && (
+                      <span className="text-xs text-zinc-400">view transcript →</span>
+                    )}
                   </div>
+                  <time className="text-sm text-zinc-400 shrink-0">
+                    {formatTime(e.created_at)}
+                  </time>
+                </div>
 
-                  {e.hard_spots.length > 0 && (
-                    <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-                      Hard spots: {e.hard_spots.join(", ")}
-                    </p>
-                  )}
-                  {e.note && (
-                    <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">{e.note}</p>
-                  )}
-                </button>
+                {e.hard_spots.length > 0 && (
+                  <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                    Hard spots: {e.hard_spots.join(", ")}
+                  </p>
+                )}
+                {e.note && (
+                  <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">{e.note}</p>
+                )}
+              </>
+            );
 
-                {isOpen && e.call_sid && (
-                  <div className="mt-4">
-                    <CallTranscript callSid={e.call_sid} />
-                  </div>
+            const className = `block rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-5 transition-colors duration-1000 ${
+              freshId === e.id ? "!bg-amber-50 dark:!bg-amber-950/40" : ""
+            } ${clickable ? "hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer" : ""}`;
+
+            return (
+              <li key={e.id}>
+                {clickable ? (
+                  <Link
+                    href={`/dashboard/call?sid=${encodeURIComponent(e.call_sid!)}&song=${encodeURIComponent(e.song)}`}
+                    className={className}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div className={className}>{content}</div>
                 )}
               </li>
             );
