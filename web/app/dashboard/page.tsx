@@ -65,7 +65,15 @@ export default function Dashboard() {
           <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             Practice Log
           </h1>
-          <ServiceStatus />
+          <div className="flex items-center gap-3">
+            <ServiceStatus />
+            <Link
+              href="/dashboard/logs"
+              className="text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 underline"
+            >
+              View logs
+            </Link>
+          </div>
         </div>
         <p className="text-zinc-500 dark:text-zinc-400 mt-1">
           Live feed of guitar coaching sessions from phone and VoiceOS. Click a

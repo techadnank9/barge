@@ -17,9 +17,11 @@ Then expose with ngrok and point your number's webhook at https://<host>/voice
 
 import os
 import sys
+import time
 import html
 import requests
-from flask import Flask, request, Response
+from collections import deque
+from flask import Flask, request, Response, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
@@ -32,6 +34,16 @@ TEAM_KEY = os.environ.get("TEAM_KEY", "team-ac4fb03a")
 
 # in-memory per-call state. Fine for a hackathon; resets on restart.
 SESSIONS = {}
+
+# in-memory ring buffer of recent events, surfaced at GET /logs for the
+# dashboard's log viewer. Resets on restart/redeploy - not persisted.
+LOG_BUFFER: deque = deque(maxlen=300)
+
+
+def log_event(kind: str, message: str) -> None:
+    entry = {"ts": time.time(), "kind": kind, "message": message}
+    LOG_BUFFER.append(entry)
+    print(f"[{kind}] {message}")
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +81,7 @@ def log_turn(call_sid: str, speaker: str, text: str) -> None:
     try:
         add_turn(call_sid, speaker, text)
     except Exception as e:
-        print(f"[log_turn] failed for {call_sid}: {e}")
+        log_event("log_turn_error", f"failed for {call_sid}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +126,7 @@ def build_sms_text(chart: dict, hard_spot: str | None) -> str:
 def voice():
     call_sid = request.form.get("CallSid", "")
     caller = request.form.get("From", "")
-    print(f"[voice] form={dict(request.form)}")
+    log_event("voice", f"call {call_sid} from {caller}: {dict(request.form)}")
     s = sess(call_sid)
     s["caller"] = caller
     greeting = (
@@ -133,7 +145,7 @@ def handle_song():
     call_sid = request.form.get("CallSid", "")
     s = sess(call_sid)
     heard = (request.form.get("SpeechResult") or "").strip()
-    print(f"[handle-song] form={dict(request.form)}")
+    log_event("handle-song", f"call {call_sid} heard={heard!r} form={dict(request.form)}")
 
     if not heard:
         line = "Sorry, I didn't catch that. What song?"
@@ -248,7 +260,7 @@ def finish():
                f"ending {last4}. Check your messages. Keep practicing!")
     else:
         # THE honest branch. Never claim success the API didn't confirm.
-        print(f"[finish] SMS failed for {caller}: {detail}")
+        log_event("finish", f"SMS failed for call {call_sid} to {caller}: {detail}")
         msg = ("I tried to text you the chords but the message didn't go through "
                "just now. Nothing was sent. You may need to verify your number "
                "first, or try calling back. Sorry about that!")
@@ -264,6 +276,16 @@ def finish():
 @app.route("/", methods=["GET"])
 def health():
     resp = Response("guitar-agent up", mimetype="text/plain")
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# recent events — for the dashboard's log viewer. CORS-open, in-memory only.
+# ---------------------------------------------------------------------------
+@app.route("/logs", methods=["GET"])
+def logs():
+    resp = jsonify(list(LOG_BUFFER))
     resp.headers["Access-Control-Allow-Origin"] = "*"
     return resp
 

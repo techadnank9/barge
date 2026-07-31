@@ -22,15 +22,26 @@ a confirm card first; on approve, log_practice fires and the dashboard updates.
 
 import os
 import sys
+import time
+from collections import deque
 from fastmcp import FastMCP
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, JSONResponse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
 from store import add_entry, recent_entries  # noqa: E402
 
 mcp = FastMCP("guitar-coach")
+
+# in-memory ring buffer of recent tool calls, surfaced at GET /logs for the
+# dashboard's log viewer. Resets on restart/redeploy - not persisted.
+LOG_BUFFER: deque = deque(maxlen=300)
+
+
+def log_event(kind: str, message: str) -> None:
+    LOG_BUFFER.append({"ts": time.time(), "kind": kind, "message": message})
+    print(f"[{kind}] {message}")
 
 
 # Health check — also doubles as the dashboard's wake/status ping. CORS-open
@@ -40,11 +51,17 @@ async def health(request: Request) -> PlainTextResponse:
     return PlainTextResponse("mcp-service up", headers={"Access-Control-Allow-Origin": "*"})
 
 
+@mcp.custom_route("/logs", methods=["GET"])
+async def logs(request: Request) -> JSONResponse:
+    return JSONResponse(list(LOG_BUFFER), headers={"Access-Control-Allow-Origin": "*"})
+
+
 @mcp.tool
 def get_chord_chart(song: str) -> dict:
     """Get the chord chart for a song so it can be read aloud. Returns the
     chords plus a `confident` flag — if false, the chords are a common version,
     not guaranteed exact for this specific song."""
+    log_event("get_chord_chart", f"song={song!r}")
     chart, source = get_chart(song)
     if chart is None:
         return {"found": False, "message": f"Couldn't find or generate chords for {song}."}
@@ -64,10 +81,12 @@ def log_practice(song: str, hard_spots: list[str] | None = None, note: str = "")
     """Log a completed practice session. This writes a real, visible entry to
     the practice log — the confirmable side effect. Pass the song and any parts
     the player found hard."""
+    log_event("log_practice", f"song={song!r} hard_spots={hard_spots!r}")
     try:
         entry = add_entry("voiceos", song, hard_spots or [], note)
     except Exception as e:
         # honesty rule: never claim a log happened if the write didn't succeed
+        log_event("log_practice_error", f"song={song!r}: {e}")
         return {"logged": False, "message": f"Couldn't log this practice: {e}"}
     return {"logged": True, "entry": entry,
             "message": f"Logged practice for {song}."}
@@ -76,9 +95,11 @@ def log_practice(song: str, hard_spots: list[str] | None = None, note: str = "")
 @mcp.tool
 def schedule_practice(song: str, when: str) -> dict:
     """Record a follow-up practice session (e.g. 'Thursday 6pm') in the log."""
+    log_event("schedule_practice", f"song={song!r} when={when!r}")
     try:
         entry = add_entry("voiceos", song, [], note=f"scheduled: {when}")
     except Exception as e:
+        log_event("schedule_practice_error", f"song={song!r}: {e}")
         return {"scheduled": False, "message": f"Couldn't schedule this: {e}"}
     return {"scheduled": True, "entry": entry,
             "message": f"Follow-up for {song} noted for {when}."}
