@@ -26,7 +26,7 @@ from flask import Flask, request, Response, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
-from store import add_entry, add_turn, has_turns  # noqa: E402
+from store import add_entry, add_turn, has_turns, set_call_chart  # noqa: E402
 
 app = Flask(__name__)
 
@@ -166,11 +166,13 @@ def _vapi_args(call: dict) -> dict:
 @app.route("/vapi/get-chord-chart", methods=["POST"])
 def vapi_get_chord_chart():
     payload = request.get_json(force=True, silent=True) or {}
+    message = payload.get("message", {})
+    call_sid = (message.get("call") or {}).get("id", "")
     results = []
     for call in _vapi_tool_calls(payload):
         args = _vapi_args(call)
         song = args.get("song", "")
-        log_event("vapi-get-chord-chart", f"song={song!r}")
+        log_event("vapi-get-chord-chart", f"call {call_sid} song={song!r}")
         chart, source = get_chart(song)
         if chart is None:
             result = json.dumps({"found": False, "message": f"Couldn't find or generate chords for {song}."})
@@ -184,6 +186,13 @@ def vapi_get_chord_chart():
                 "confident": chart.get("confident", True),
                 "source": source,
             })
+            if call_sid:
+                try:
+                    set_call_chart(call_sid, chart["title"], chart.get("verse", []),
+                                    chart.get("chorus", []), chart.get("hard_spots", []),
+                                    chart.get("confident", True))
+                except Exception as e:
+                    log_event("vapi-get-chord-chart-error", f"set_call_chart failed for {call_sid}: {e}")
         results.append({"toolCallId": call.get("id", ""), "result": result})
     return jsonify({"results": results})
 

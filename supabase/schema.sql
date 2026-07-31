@@ -66,3 +66,30 @@ create policy "anon can read call turns"
 
 -- No anon insert/update/delete on purpose: only the phone service's
 -- service-role key writes turns.
+
+-- ---------------------------------------------------------------------------
+-- Live chord chart: the chart currently being coached on a call, keyed by
+-- call_sid. Upserted whenever the assistant looks up a song mid-call, so the
+-- dashboard can show "what to press" alongside the live transcript.
+-- ---------------------------------------------------------------------------
+create table if not exists call_charts (
+  call_sid     text primary key,
+  updated_at   timestamptz not null default now(),
+  song         text not null,
+  verse        text[] not null default '{}',
+  chorus       text[] not null default '{}',
+  hard_spots   text[] not null default '{}',
+  confident    boolean not null default true
+);
+
+alter publication supabase_realtime add table call_charts;
+
+alter table call_charts enable row level security;
+
+create policy "anon can read call charts"
+  on call_charts for select
+  to anon
+  using (true);
+
+-- No anon insert/update/delete on purpose: only the phone service's
+-- service-role key writes.

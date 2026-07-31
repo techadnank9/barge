@@ -66,3 +66,18 @@ def has_turns(call_sid: str) -> bool:
     res = (_client.table("call_turns").select("id")
            .eq("call_sid", call_sid).limit(1).execute())
     return bool(res.data)
+
+
+def set_call_chart(call_sid: str, song: str, verse=None, chorus=None,
+                    hard_spots=None, confident: bool = True) -> dict:
+    """
+    Upsert the chord chart currently being coached on a call, so the
+    dashboard can show "what to press" live alongside the transcript.
+    """
+    row = {
+        "call_sid": call_sid, "song": song,
+        "verse": verse or [], "chorus": chorus or [],
+        "hard_spots": hard_spots or [], "confident": confident,
+    }
+    res = _client.table("call_charts").upsert(row, on_conflict="call_sid").execute()
+    return res.data[0]

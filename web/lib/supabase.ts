@@ -19,6 +19,16 @@ export type CallTurn = {
   text: string;
 };
 
+export type CallChart = {
+  call_sid: string;
+  updated_at: string;
+  song: string;
+  verse: string[];
+  chorus: string[];
+  hard_spots: string[];
+  confident: boolean;
+};
+
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
