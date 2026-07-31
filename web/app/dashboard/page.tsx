@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase, PracticeEntry } from "@/lib/supabase";
 import ServiceStatus from "@/components/ServiceStatus";
+import LiveTranscript from "@/components/LiveTranscript";
 
 const SOURCE_LABEL: Record<PracticeEntry["source"], string> = {
   phone: "Phone",
@@ -73,6 +74,10 @@ export default function Dashboard() {
       </header>
 
       <main className="max-w-3xl mx-auto px-8 py-8">
+        <div className="mb-8">
+          <LiveTranscript />
+        </div>
+
         {entries.length === 0 && (
           <p className="text-zinc-400 text-center py-16">
             No practice entries yet. Call the coach or log a session in VoiceOS.
