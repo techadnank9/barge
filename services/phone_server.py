@@ -17,6 +17,7 @@ Then expose with ngrok and point your number's webhook at https://<host>/voice
 
 import os
 import sys
+import json
 import time
 import html
 import requests
@@ -31,6 +32,13 @@ app = Flask(__name__)
 
 A1_BASE = "https://hack.a1mobile.com"
 TEAM_KEY = os.environ.get("TEAM_KEY", "team-ac4fb03a")
+# a1mobile's TeXML <Gather input="speech"> doesn't reliably transcribe on this
+# platform (confirmed: real calls return SpeechResult='' / Confidence 0.0 every
+# time - not documented anywhere in a1mobile's TeXML guide, which only shows
+# input="dtmf"). So the phone surface bridges into a Vapi assistant instead,
+# which brings its own STT/TTS/natural voice. Vapi calls back into this
+# service via the /vapi/* tool endpoints below for the actual side effects.
+VAPI_SIP_URI = os.environ.get("VAPI_SIP_URI", "")
 
 # in-memory per-call state. Fine for a hackathon; resets on restart.
 SESSIONS = {}
@@ -56,16 +64,6 @@ def texml(body: str) -> Response:
 
 def say(text: str) -> str:
     return f'<Say voice="alice">{html.escape(text)}</Say>'
-
-
-def gather(prompt: str, action: str) -> str:
-    """Speak a prompt, then listen for the caller's speech and POST it to action."""
-    return (
-        f'<Gather input="speech" speechTimeout="auto" '
-        f'action="{action}" method="POST">{say(prompt)}</Gather>'
-        # if they stay silent, loop back so the call doesn't dead-air
-        f'<Redirect method="POST">{action}</Redirect>'
-    )
 
 
 def sess(call_sid: str) -> dict:
@@ -120,7 +118,9 @@ def build_sms_text(chart: dict, hard_spot: str | None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 1. /voice — answer + greet + ask for the song
+# 1. /voice — answer + bridge straight into the Vapi assistant over SIP.
+# Vapi handles all conversation (STT/TTS/LLM); this service only answers
+# Vapi's tool-call webhooks below for the actual side effects.
 # ---------------------------------------------------------------------------
 @app.route("/voice", methods=["POST"])
 def voice():
@@ -129,144 +129,122 @@ def voice():
     log_event("voice", f"call {call_sid} from {caller}: {dict(request.form)}")
     s = sess(call_sid)
     s["caller"] = caller
-    greeting = (
-        "Hi! I'm your guitar coach. Tell me a song you want to play and sing, "
-        "and I'll walk you through it. Which song?"
-    )
-    log_turn(call_sid, "agent", greeting)
-    return texml(gather(greeting, "/handle-song"))
 
-
-# ---------------------------------------------------------------------------
-# 2. /handle-song — resolve the chart (seed hit or generate), honest on miss
-# ---------------------------------------------------------------------------
-@app.route("/handle-song", methods=["POST"])
-def handle_song():
-    call_sid = request.form.get("CallSid", "")
-    s = sess(call_sid)
-    heard = (request.form.get("SpeechResult") or "").strip()
-    log_event("handle-song", f"call {call_sid} heard={heard!r} form={dict(request.form)}")
-
-    if not heard:
-        line = "Sorry, I didn't catch that. What song?"
-        log_turn(call_sid, "agent", line)
-        return texml(gather(line, "/handle-song"))
-
-    log_turn(call_sid, "caller", heard)
-
-    chart, source = get_chart(heard)
-
-    if chart is None:
-        # honest failure: couldn't find or generate. Offer a seeded fallback.
-        line = (
-            f"I couldn't find chords for {heard}. I know Wonderwall, Let It Be, "
-            "and Three Little Birds well. Want one of those, or another song?"
-        )
-        log_turn(call_sid, "agent", line)
-        return texml(gather(line, "/handle-song"))
-
-    s["chart"] = chart
-    s["source"] = source
-    s["section"] = "verse"
-    s["reps"] = 0
-
-    first = chart["verse"][0] if chart["verse"] else (chart["chorus"][0] if chart["chorus"] else "the first chord")
-    intro = f"Great, {chart['title']}. "
-    if not chart.get("confident", True):
-        # source == generated and unsure: say so BEFORE coaching invented chords
-        intro += ("I'm not fully certain of the exact chords for this one, so treat "
-                  "this as a common version. ")
-    intro += (f"We'll start with the verse. First chord is {first}. "
-              "Put your fingers there, and say ready when you want me to count you in.")
-    log_turn(call_sid, "agent", intro)
-    return texml(gather(intro, "/handle-turn"))
-
-
-# ---------------------------------------------------------------------------
-# 3. /handle-turn — the coached practice loop (timing + delivery, never notes)
-# ---------------------------------------------------------------------------
-@app.route("/handle-turn", methods=["POST"])
-def handle_turn():
-    call_sid = request.form.get("CallSid", "")
-    s = sess(call_sid)
-    heard = (request.form.get("SpeechResult") or "").lower()
-    chart = s.get("chart")
-
-    if not chart:
-        line = "Let's pick a song first. Which one?"
-        log_turn(call_sid, "agent", line)
-        return texml(gather(line, "/handle-song"))
-
-    if heard:
-        log_turn(call_sid, "caller", heard)
-
-    # caller wants to wrap up -> go send the text
-    if any(w in heard for w in ("done", "finish", "that's it", "text me", "send")):
-        return texml('<Redirect method="POST">/finish</Redirect>')
-
-    # caller flags a hard spot -> remember it for the SMS
-    if any(w in heard for w in ("hard", "fast", "struggl", "again", "messed", "off")):
-        s["hard_spot"] = f"{s['section']}: {chart.get('hard_spots', ['this change'])[0] if chart.get('hard_spots') else 'the tricky change'}"
-
-    section = s["section"]
-    chords = chart.get(section) or chart.get("verse") or []
-    s["reps"] += 1
-
-    # count them in and call the changes for the current section
-    progression = " then ".join(chords) if chords else "the chords"
-    line = (f"Okay, {section}. Count of four - one, two, three, four. "
-            f"Play {progression}. Keep the strum steady and change on the beat.")
-
-    # after a couple reps of the verse, move to the chorus, then offer to finish
-    if section == "verse" and s["reps"] >= 2 and chart.get("chorus"):
-        s["section"] = "chorus"
-        s["reps"] = 0
-        line += " Nice. Now let's try the chorus. Say ready."
-    elif s["reps"] >= 2:
-        line += (" You're getting it. Say 'done' and I'll text you the chords, "
-                 "or 'again' to run it once more.")
-    else:
-        line += " Give it a go, then say 'again' or 'next'."
-
-    log_turn(call_sid, "agent", line)
-    return texml(gather(line, "/handle-turn"))
-
-
-# ---------------------------------------------------------------------------
-# 4. /finish — confirm number, fire the real SMS, report HONESTLY
-# ---------------------------------------------------------------------------
-@app.route("/finish", methods=["POST"])
-def finish():
-    call_sid = request.form.get("CallSid", "")
-    s = sess(call_sid)
-    chart = s.get("chart")
-    caller = s.get("caller", "")
-
-    if not chart:
-        line = "We didn't get to a song this time. Call back anytime!"
-        log_turn(call_sid, "agent", line)
+    if not VAPI_SIP_URI:
+        line = "Sorry, the coach isn't set up right now. Try again later."
         return texml(say(line) + "<Hangup/>")
 
-    body = build_sms_text(chart, s.get("hard_spot"))
-    ok, detail = send_sms(caller, body)
+    return texml(f"<Dial><Sip>{html.escape(VAPI_SIP_URI)}</Sip></Dial>")
 
-    if ok:
-        # phone surface also feeds the shared practice log / dashboard
-        hard = [s["hard_spot"]] if s.get("hard_spot") else chart.get("hard_spots", [])
-        add_entry("phone", chart["title"], hard, note="coached by phone",
-                   confident=chart.get("confident", True), call_sid=call_sid)
-        last4 = caller[-4:] if len(caller) >= 4 else caller
-        msg = (f"Done! I've texted the chords for {chart['title']} to the number "
-               f"ending {last4}. Check your messages. Keep practicing!")
-    else:
-        # THE honest branch. Never claim success the API didn't confirm.
-        log_event("finish", f"SMS failed for call {call_sid} to {caller}: {detail}")
-        msg = ("I tried to text you the chords but the message didn't go through "
-               "just now. Nothing was sent. You may need to verify your number "
-               "first, or try calling back. Sorry about that!")
 
-    log_turn(call_sid, "agent", msg)
-    return texml(say(msg) + "<Hangup/>")
+# ---------------------------------------------------------------------------
+# Vapi tool-call webhooks — the assistant calls these mid-conversation.
+# Shape: {"message": {"type": "tool-calls", "toolCallList": [...],
+#         "call": {...}, "customer": {"number": "+1..."}}}
+# Expected reply: {"results": [{"toolCallId": "...", "result": "..."}]}
+# ---------------------------------------------------------------------------
+def _vapi_tool_calls(payload: dict) -> list[dict]:
+    message = payload.get("message", {})
+    calls = message.get("toolCallList") or []
+    if not calls:
+        # some Vapi versions nest under toolWithToolCallList[].toolCall
+        calls = [c.get("toolCall", c) for c in message.get("toolWithToolCallList") or []]
+    return calls
+
+
+def _vapi_args(call: dict) -> dict:
+    fn = call.get("function", {})
+    args = fn.get("arguments", {})
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+    return args or {}
+
+
+@app.route("/vapi/get-chord-chart", methods=["POST"])
+def vapi_get_chord_chart():
+    payload = request.get_json(force=True, silent=True) or {}
+    results = []
+    for call in _vapi_tool_calls(payload):
+        args = _vapi_args(call)
+        song = args.get("song", "")
+        log_event("vapi-get-chord-chart", f"song={song!r}")
+        chart, source = get_chart(song)
+        if chart is None:
+            result = json.dumps({"found": False, "message": f"Couldn't find or generate chords for {song}."})
+        else:
+            result = json.dumps({
+                "found": True,
+                "title": chart["title"],
+                "verse": chart.get("verse", []),
+                "chorus": chart.get("chorus", []),
+                "hard_spots": chart.get("hard_spots", []),
+                "confident": chart.get("confident", True),
+                "source": source,
+            })
+        results.append({"toolCallId": call.get("id", ""), "result": result})
+    return jsonify({"results": results})
+
+
+@app.route("/vapi/finish", methods=["POST"])
+def vapi_finish():
+    """
+    The assistant calls this once coaching wraps up. Sends the real SMS and
+    only claims success / logs the practice entry if a1mobile confirms the
+    send — same honesty rule as the original /finish, just triggered by a
+    Vapi tool call instead of a TeXML redirect.
+    """
+    payload = request.get_json(force=True, silent=True) or {}
+    message = payload.get("message", {})
+    customer = message.get("customer") or {}
+    call_info = message.get("call") or {}
+    caller = customer.get("number") or call_info.get("customer", {}).get("number") or ""
+    call_sid = call_info.get("id", "")
+
+    results = []
+    for call in _vapi_tool_calls(payload):
+        args = _vapi_args(call)
+        song = args.get("song", "")
+        hard_spots = args.get("hard_spots") or []
+        confident = args.get("confident", True)
+        verse = args.get("verse") or []
+        chorus = args.get("chorus") or []
+        log_event("vapi-finish", f"call {call_sid} song={song!r} caller={caller!r} hard_spots={hard_spots!r}")
+
+        if not song or not caller:
+            result = json.dumps({
+                "texted": False,
+                "message": "Missing song or caller number - nothing was sent.",
+            })
+            results.append({"toolCallId": call.get("id", ""), "result": result})
+            continue
+
+        chart = {"title": song, "verse": verse, "chorus": chorus,
+                 "hard_spots": hard_spots, "confident": confident}
+        body = build_sms_text(chart, hard_spots[0] if hard_spots else None)
+        ok, detail = send_sms(caller, body)
+
+        if ok:
+            add_entry("phone", song, hard_spots, note="coached by phone (vapi)",
+                       confident=confident, call_sid=call_sid or None)
+            last4 = caller[-4:] if len(caller) >= 4 else caller
+            result = json.dumps({
+                "texted": True,
+                "message": f"Texted the chords to the number ending {last4}.",
+            })
+        else:
+            # THE honest branch. Never claim success the API didn't confirm.
+            log_event("vapi-finish", f"SMS failed for call {call_sid} to {caller}: {detail}")
+            result = json.dumps({
+                "texted": False,
+                "message": "The text didn't go through just now. Nothing was sent.",
+            })
+
+        results.append({"toolCallId": call.get("id", ""), "result": result})
+
+    return jsonify({"results": results})
 
 
 # ---------------------------------------------------------------------------
