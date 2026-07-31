@@ -240,7 +240,7 @@ def finish():
         # phone surface also feeds the shared practice log / dashboard
         hard = [s["hard_spot"]] if s.get("hard_spot") else chart.get("hard_spots", [])
         add_entry("phone", chart["title"], hard, note="coached by phone",
-                   confident=chart.get("confident", True))
+                   confident=chart.get("confident", True), call_sid=call_sid)
         last4 = caller[-4:] if len(caller) >= 4 else caller
         msg = (f"Done! I've texted the chords for {chart['title']} to the number "
                f"ending {last4}. Check your messages. Keep practicing!")

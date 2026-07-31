@@ -25,16 +25,18 @@ _client: "Client" = create_client(
 
 
 def add_entry(source: str, song: str, hard_spots=None, note: str = "",
-              confident: bool = True) -> dict:
+              confident: bool = True, call_sid: str | None = None) -> dict:
     """
     Insert one practice entry and return the created row.
     `source` is 'phone' or 'voiceos'. Must succeed or raise - callers rely on
     this to decide whether to claim success to the user (the honesty rule).
+    `call_sid` links a phone entry to its call_turns transcript; left null
+    for voiceos entries (no phone call to transcribe).
     """
     row = {
         "source": source, "song": song,
         "hard_spots": hard_spots or [], "note": note,
-        "confident": confident,
+        "confident": confident, "call_sid": call_sid,
     }
     res = _client.table("practice_entries").insert(row).execute()
     return res.data[0]

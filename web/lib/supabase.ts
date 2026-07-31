@@ -8,6 +8,7 @@ export type PracticeEntry = {
   hard_spots: string[];
   note: string;
   confident: boolean;
+  call_sid: string | null;
 };
 
 export type CallTurn = {

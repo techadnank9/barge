@@ -8,8 +8,14 @@ create table if not exists practice_entries (
   song         text not null,
   hard_spots   text[] not null default '{}',
   note         text not null default '',
-  confident    boolean not null default true
+  confident    boolean not null default true,
+  call_sid     text
 );
+
+-- Links a phone practice entry to its call_turns transcript. Null for
+-- voiceos entries (no phone call) and for entries created before this
+-- column existed.
+alter table practice_entries add column if not exists call_sid text;
 
 -- newest-first reads
 create index if not exists practice_entries_created_at_idx
