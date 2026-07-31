@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: close-the-loop-phone
+    runtime: python
+    plan: free
+    buildCommand: pip install -r services/requirements.txt
+    startCommand: gunicorn phone_server:app --chdir services --bind 0.0.0.0:$PORT
+    envVars:
+      - key: TEAM_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+  - type: web
+    name: close-the-loop-mcp
+    runtime: python
+    plan: free
+    buildCommand: pip install -r services/requirements.txt
+    startCommand: python services/mcp_service.py
+    envVars:
+      - key: MCP_HOST
+        value: 0.0.0.0
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

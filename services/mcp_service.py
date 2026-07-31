@@ -83,6 +83,8 @@ def recent_practices(limit: int = 5) -> dict:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("MCP_PORT", 8000))
+    # Render (and most PaaS) inject PORT; fall back to MCP_PORT for local dev.
+    port = int(os.environ.get("PORT", os.environ.get("MCP_PORT", 8000)))
+    host = os.environ.get("MCP_HOST", "127.0.0.1")
     # streamable HTTP transport, mounted at /mcp/ (keep the trailing slash when adding to VoiceOS)
-    mcp.run(transport="http", host="127.0.0.1", port=port)
+    mcp.run(transport="http", host=host, port=port)

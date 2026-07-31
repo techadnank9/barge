@@ -236,5 +236,6 @@ def health():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PHONE_PORT", 5000))
+    # Render (and most PaaS) inject PORT; fall back to PHONE_PORT for local dev.
+    port = int(os.environ.get("PORT", os.environ.get("PHONE_PORT", 5000)))
     app.run(host="0.0.0.0", port=port)
