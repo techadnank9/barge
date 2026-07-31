@@ -56,6 +56,17 @@ SEED_SONGS = {
         "hard_spots": ["clean A to D switch"],
         "confident": True,
     },
+    "perfect": {
+        "title": "Perfect",
+        "artist": "Ed Sheeran",
+        # Standard published version, capo 1st fret (chord names below are
+        # relative to the capo). TODO: strum through this once yourself
+        # before relying on it live - it hasn't been physically verified.
+        "verse": ["G", "Em7", "C", "D"],
+        "chorus": ["Em7", "C", "G", "D"],
+        "hard_spots": ["G to Em7 change", "capo 1st fret"],
+        "confident": True,
+    },
 }
 
 
