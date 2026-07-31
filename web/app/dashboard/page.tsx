@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase, PracticeEntry } from "@/lib/supabase";
+import ServiceStatus from "@/components/ServiceStatus";
 
 const SOURCE_LABEL: Record<PracticeEntry["source"], string> = {
   phone: "Phone",
@@ -60,9 +61,12 @@ export default function Dashboard() {
         >
           ← Close the Loop
         </Link>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 mt-2">
-          Practice Log
-        </h1>
+        <div className="flex flex-wrap items-start justify-between gap-4 mt-2">
+          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+            Practice Log
+          </h1>
+          <ServiceStatus />
+        </div>
         <p className="text-zinc-500 dark:text-zinc-400 mt-1">
           Live feed of guitar coaching sessions from phone and VoiceOS.
         </p>
