@@ -228,11 +228,14 @@ def finish():
 
 
 # ---------------------------------------------------------------------------
-# health check
+# health check — also doubles as the dashboard's wake/status ping.
+# CORS-open since the dashboard (a different origin) polls this directly.
 # ---------------------------------------------------------------------------
 @app.route("/", methods=["GET"])
 def health():
-    return "guitar-agent up", 200
+    resp = Response("guitar-agent up", mimetype="text/plain")
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 if __name__ == "__main__":

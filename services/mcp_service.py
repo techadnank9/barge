@@ -23,12 +23,21 @@ a confirm card first; on approve, log_practice fires and the dashboard updates.
 import os
 import sys
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
 from store import add_entry, recent_entries  # noqa: E402
 
 mcp = FastMCP("guitar-coach")
+
+
+# Health check — also doubles as the dashboard's wake/status ping. CORS-open
+# since the dashboard (a different origin) polls this directly.
+@mcp.custom_route("/", methods=["GET"])
+async def health(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("mcp-service up", headers={"Access-Control-Allow-Origin": "*"})
 
 
 @mcp.tool
