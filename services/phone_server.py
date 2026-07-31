@@ -114,6 +114,7 @@ def build_sms_text(chart: dict, hard_spot: str | None) -> str:
 def voice():
     call_sid = request.form.get("CallSid", "")
     caller = request.form.get("From", "")
+    print(f"[voice] form={dict(request.form)}")
     s = sess(call_sid)
     s["caller"] = caller
     greeting = (
@@ -132,6 +133,7 @@ def handle_song():
     call_sid = request.form.get("CallSid", "")
     s = sess(call_sid)
     heard = (request.form.get("SpeechResult") or "").strip()
+    print(f"[handle-song] form={dict(request.form)}")
 
     if not heard:
         line = "Sorry, I didn't catch that. What song?"
