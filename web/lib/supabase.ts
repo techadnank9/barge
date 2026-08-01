@@ -27,6 +27,7 @@ export type CallChart = {
   chorus: string[];
   hard_spots: string[];
   confident: boolean;
+  current_section: "verse" | "chorus";
 };
 
 export const supabase = createClient(

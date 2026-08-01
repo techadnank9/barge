@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-pyth
 from songs import get_chart  # noqa: E402
 from store import (  # noqa: E402
     add_entry, add_turn, has_turns, set_call_chart, get_call_chart, has_entry_for_call,
+    advance_call_section,
 )
 
 app = Flask(__name__)
@@ -195,6 +196,35 @@ def vapi_get_chord_chart():
                                     chart.get("confident", True))
                 except Exception as e:
                     log_event("vapi-get-chord-chart-error", f"set_call_chart failed for {call_sid}: {e}")
+        results.append({"toolCallId": call.get("id", ""), "result": result})
+    return jsonify({"results": results})
+
+
+@app.route("/vapi/advance-section", methods=["POST"])
+def vapi_advance_section():
+    """
+    The assistant calls this when it moves the caller from verse to chorus
+    (or back). Only moves the "you are here" highlight on the dashboard's
+    live chord chart - verse and chorus chords both stay visible, nothing
+    is hidden or replaced.
+    """
+    payload = request.get_json(force=True, silent=True) or {}
+    message = payload.get("message", {})
+    call_sid = (message.get("call") or {}).get("id", "")
+    results = []
+    for call in _vapi_tool_calls(payload):
+        args = _vapi_args(call)
+        section = args.get("section", "")
+        log_event("vapi-advance-section", f"call {call_sid} section={section!r}")
+        if section not in ("verse", "chorus") or not call_sid:
+            result = json.dumps({"advanced": False, "message": "Invalid section or missing call."})
+        else:
+            try:
+                advance_call_section(call_sid, section)
+                result = json.dumps({"advanced": True})
+            except Exception as e:
+                log_event("vapi-advance-section-error", f"call {call_sid}: {e}")
+                result = json.dumps({"advanced": False, "message": str(e)})
         results.append({"toolCallId": call.get("id", ""), "result": result})
     return jsonify({"results": results})
 

@@ -69,7 +69,8 @@ def has_turns(call_sid: str) -> bool:
 
 
 def set_call_chart(call_sid: str, song: str, verse=None, chorus=None,
-                    hard_spots=None, confident: bool = True) -> dict:
+                    hard_spots=None, confident: bool = True,
+                    current_section: str = "verse") -> dict:
     """
     Upsert the chord chart currently being coached on a call, so the
     dashboard can show "what to press" live alongside the transcript.
@@ -78,8 +79,22 @@ def set_call_chart(call_sid: str, song: str, verse=None, chorus=None,
         "call_sid": call_sid, "song": song,
         "verse": verse or [], "chorus": chorus or [],
         "hard_spots": hard_spots or [], "confident": confident,
+        "current_section": current_section,
     }
     res = _client.table("call_charts").upsert(row, on_conflict="call_sid").execute()
+    return res.data[0]
+
+
+def advance_call_section(call_sid: str, section: str) -> dict:
+    """
+    Move the "you are here" marker on the current call's chord chart, e.g.
+    when the caller finishes the verse and moves to the chorus. Doesn't
+    touch verse/chorus/hard_spots - both stay visible, only the highlight
+    moves. Raises if no chart row exists yet for this call.
+    """
+    res = (_client.table("call_charts")
+           .update({"current_section": section})
+           .eq("call_sid", call_sid).execute())
     return res.data[0]
 
 

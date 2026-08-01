@@ -3,12 +3,25 @@
 import { useEffect, useState } from "react";
 import { supabase, CallChart } from "@/lib/supabase";
 
-function StepCards({ label, chords }: { label: string; chords: string[] }) {
+function StepCards({
+  label,
+  chords,
+  current,
+}: {
+  label: string;
+  chords: string[];
+  current: boolean;
+}) {
   if (chords.length === 0) return null;
   return (
-    <div>
-      <span className="text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-500">
+    <div className={`rounded-lg p-2 -m-2 transition-colors ${current ? "bg-amber-100/70 dark:bg-amber-900/25 ring-1 ring-amber-300 dark:ring-amber-800" : "opacity-60"}`}>
+      <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:text-amber-500">
         {label}
+        {current && (
+          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-600 text-white dark:bg-amber-600 normal-case tracking-normal">
+            you are here
+          </span>
+        )}
       </span>
       <div className="flex flex-wrap items-center gap-2 mt-1.5">
         {chords.map((c, i) => (
@@ -74,8 +87,16 @@ export default function ChordChart({ callSid }: { callSid: string }) {
         )}
       </div>
       <div className="flex flex-col gap-3">
-        <StepCards label="Verse — press in order" chords={chart.verse} />
-        <StepCards label="Chorus — press in order" chords={chart.chorus} />
+        <StepCards
+          label="Verse — press in order"
+          chords={chart.verse}
+          current={chart.current_section === "verse"}
+        />
+        <StepCards
+          label="Chorus — press in order"
+          chords={chart.chorus}
+          current={chart.current_section === "chorus"}
+        />
       </div>
       {chart.hard_spots.length > 0 && (
         <p className="mt-3 text-xs text-amber-800 dark:text-amber-400">

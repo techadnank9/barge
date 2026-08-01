@@ -251,6 +251,7 @@ one row per `call_sid` (upserted).
 | `verse` / `chorus` | `text[]` | one chord per element |
 | `hard_spots` | `text[]` | |
 | `confident` | `boolean` | |
+| `current_section` | `text` | `'verse'` or `'chorus'` — which section the dashboard highlights as "you are here". Set by `advance_section`; verse and chorus chords both stay visible regardless. |
 
 ## The honesty rule
 
@@ -382,9 +383,16 @@ points if you need to recreate or modify it:
   deprecated and rejected on new assistants — check
   `docs.vapi.ai/providers/voice/vapi-voices` for the current supported list.
 - **Model:** `openai` / `gpt-4o-mini`.
-- **Tools:** `get_chord_chart` and `finish_session`, each a `function` tool
-  with its own `server.url` pointing at the phone service's `/vapi/*`
-  endpoints (tool-level `server` takes precedence over assistant-level).
+- **Tools:** `get_chord_chart`, `advance_section`, and `finish_session`, each
+  a `function` tool with its own `server.url` pointing at the phone
+  service's `/vapi/*` endpoints (tool-level `server` takes precedence over
+  assistant-level). `advance_section` (new — call it with `{"section":
+  "verse"|"chorus"}` when the caller moves from the verse to the chorus or
+  back) only moves the dashboard's "you are here" highlight; it never hides
+  the other section's chords. **Not yet added to the live assistant** — the
+  system prompt needs to be told to call it at the same points it currently
+  narrates moving on, and remember PATCH replaces `tools` wholesale (see
+  below).
   Each has a custom `request-start` message (`"messages": [{"type":
   "request-start", "content": "..."}]`) — **without this, Vapi injects one
   of its own default filler lines** ("Hold on a sec", "One moment", "Just a

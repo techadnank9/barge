@@ -73,14 +73,23 @@ create policy "anon can read call turns"
 -- dashboard can show "what to press" alongside the live transcript.
 -- ---------------------------------------------------------------------------
 create table if not exists call_charts (
-  call_sid     text primary key,
-  updated_at   timestamptz not null default now(),
-  song         text not null,
-  verse        text[] not null default '{}',
-  chorus       text[] not null default '{}',
-  hard_spots   text[] not null default '{}',
-  confident    boolean not null default true
+  call_sid        text primary key,
+  updated_at      timestamptz not null default now(),
+  song            text not null,
+  verse           text[] not null default '{}',
+  chorus          text[] not null default '{}',
+  hard_spots      text[] not null default '{}',
+  confident       boolean not null default true,
+  current_section text not null default 'verse' check (current_section in ('verse', 'chorus'))
 );
+
+-- Which section (verse/chorus) the assistant is currently coaching on this
+-- call, so the dashboard can highlight "you are here" without hiding the
+-- other section — added after the initial launch.
+alter table call_charts add column if not exists current_section text not null default 'verse';
+alter table call_charts drop constraint if exists call_charts_current_section_check;
+alter table call_charts add constraint call_charts_current_section_check
+  check (current_section in ('verse', 'chorus'));
 
 alter publication supabase_realtime add table call_charts;
 
