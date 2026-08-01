@@ -23,6 +23,7 @@ a confirm card first; on approve, log_practice fires and the dashboard updates.
 import os
 import sys
 import time
+import uuid
 from collections import deque
 from fastmcp import FastMCP
 from starlette.requests import Request
@@ -30,7 +31,7 @@ from starlette.responses import PlainTextResponse, JSONResponse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "reference-python"))
 from songs import get_chart  # noqa: E402
-from store import add_entry, recent_entries  # noqa: E402
+from store import add_entry, recent_entries, set_call_chart, advance_call_section  # noqa: E402
 
 mcp = FastMCP("guitar-coach")
 
@@ -60,11 +61,27 @@ async def logs(request: Request) -> JSONResponse:
 def get_chord_chart(song: str) -> dict:
     """Get the chord chart for a song so it can be read aloud. Returns the
     chords plus a `confident` flag — if false, the chords are a common version,
-    not guaranteed exact for this specific song."""
+    not guaranteed exact for this specific song, so say so before coaching it.
+    Also returns a `session_id` — pass that same value to advance_section as
+    you move the player from the verse to the chorus (and back), and pass the
+    `confident` flag through to log_practice when the session ends, so the
+    dashboard's "unverified chords" badge is accurate for generated songs
+    too."""
     log_event("get_chord_chart", f"song={song!r}")
     chart, source = get_chart(song)
     if chart is None:
         return {"found": False, "message": f"Couldn't find or generate chords for {song}."}
+
+    session_id = uuid.uuid4().hex[:8]
+    try:
+        set_call_chart(
+            f"voiceos-{session_id}", chart["title"],
+            chart.get("verse", []), chart.get("chorus", []),
+            chart.get("hard_spots", []), chart.get("confident", True),
+        )
+    except Exception as e:
+        log_event("get_chord_chart-error", f"set_call_chart failed for {session_id}: {e}")
+
     return {
         "found": True,
         "title": chart["title"],
@@ -73,17 +90,40 @@ def get_chord_chart(song: str) -> dict:
         "hard_spots": chart.get("hard_spots", []),
         "confident": chart.get("confident", True),
         "source": source,  # 'seed' (verified) or 'generated'
+        "session_id": session_id,
     }
 
 
 @mcp.tool
-def log_practice(song: str, hard_spots: list[str] | None = None, note: str = "") -> dict:
-    """Log a completed practice session. This writes a real, visible entry to
-    the practice log — the confirmable side effect. Pass the song and any parts
-    the player found hard."""
-    log_event("log_practice", f"song={song!r} hard_spots={hard_spots!r}")
+def advance_section(session_id: str, section: str) -> dict:
+    """Mark which section (verse or chorus) is currently being coached, using
+    the session_id returned by get_chord_chart, so the live dashboard
+    highlights it. Call this once right when you move the player from the
+    verse to the chorus, and again if you go back to the verse for a repeat.
+    Doesn't change what chords exist, only which one is highlighted."""
+    log_event("advance_section", f"session_id={session_id!r} section={section!r}")
+    if section not in ("verse", "chorus"):
+        return {"advanced": False, "message": "section must be 'verse' or 'chorus'."}
     try:
-        entry = add_entry("voiceos", song, hard_spots or [], note)
+        advance_call_section(f"voiceos-{session_id}", section)
+    except Exception as e:
+        log_event("advance_section_error", f"session_id={session_id!r}: {e}")
+        return {"advanced": False, "message": f"Couldn't update section: {e}"}
+    return {"advanced": True}
+
+
+@mcp.tool
+def log_practice(song: str, hard_spots: list[str] | None = None, note: str = "",
+                  confident: bool = True) -> dict:
+    """Log a completed practice session. This writes a real, visible entry to
+    the practice log — the confirmable side effect. Pass the song, any parts
+    the player found hard, and the `confident` flag from get_chord_chart's
+    result for this song (false if the chords were generated/uncertain rather
+    than a verified seed song) — never leave it defaulted to true for a song
+    you weren't actually sure about."""
+    log_event("log_practice", f"song={song!r} hard_spots={hard_spots!r} confident={confident!r}")
+    try:
+        entry = add_entry("voiceos", song, hard_spots or [], note, confident=confident)
     except Exception as e:
         # honesty rule: never claim a log happened if the write didn't succeed
         log_event("log_practice_error", f"song={song!r}: {e}")
