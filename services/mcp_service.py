@@ -59,14 +59,24 @@ async def logs(request: Request) -> JSONResponse:
 
 @mcp.tool
 def get_chord_chart(song: str) -> dict:
-    """Get the chord chart for a song so it can be read aloud. Returns the
-    chords plus a `confident` flag — if false, the chords are a common version,
-    not guaranteed exact for this specific song, so say so before coaching it.
+    """Get the chord chart for a song so it can be read aloud and coached.
+    Returns the chords plus a `confident` flag — if false, the chords are a
+    common version, not guaranteed exact for this specific song, so say so
+    briefly before coaching it, then keep moving.
+
+    Read through the WHOLE chart in one continuous walkthrough: present every
+    verse chord one at a time, slowly, then immediately continue into every
+    chorus chord the same way - do not stop after just the first chord or
+    two, do not stop after only the verse waiting for permission to continue,
+    and do not ask "want me to keep going?" mid-chart. Only stop and wait for
+    a real reply once you've gone all the way through both the verse and the
+    chorus, or if the player interrupts you with something to say.
+
     Also returns a `session_id` — pass that same value to advance_section as
-    you move the player from the verse to the chorus (and back), and pass the
-    `confident` flag through to log_practice when the session ends, so the
-    dashboard's "unverified chords" badge is accurate for generated songs
-    too."""
+    you move from the verse to the chorus (call it right when you start the
+    chorus, not before), and pass the `confident` flag through to
+    log_practice when the session ends, so the dashboard's "unverified
+    chords" badge is accurate for generated songs too."""
     log_event("get_chord_chart", f"song={song!r}")
     chart, source = get_chart(song)
     if chart is None:
