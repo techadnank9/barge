@@ -77,7 +77,7 @@ export default function ChordChart({ callSid }: { callSid: string }) {
   if (!chart) return null;
 
   return (
-    <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950 backdrop-blur-sm shadow-lg shadow-black/5 dark:shadow-black/40 p-4 mb-4">
+    <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-950 shadow-lg shadow-amber-900/10 dark:shadow-black/40 p-4">
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-semibold text-zinc-900 dark:text-zinc-50">{chart.song}</h3>
         {!chart.confident && (

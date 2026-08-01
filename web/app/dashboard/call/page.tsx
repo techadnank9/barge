@@ -3,6 +3,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import ChordChart from "@/components/ChordChart";
 import CallTranscript from "@/components/CallTranscript";
 
 function CallPageInner() {
@@ -22,20 +23,27 @@ function CallPageInner() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-8 py-8">
-      <Link
-        href="/dashboard"
-        className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-      >
-        ← Practice Log
-      </Link>
-      <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 mt-2">
-        {song ? `Call transcript — ${song}` : "Call transcript"}
-      </h1>
-      <p className="text-zinc-500 dark:text-zinc-400 mt-1 mb-6">
-        Turn-by-turn record of this phone coaching session.
-      </p>
-      <CallTranscript callSid={sid} full />
+    <div className="max-w-2xl mx-auto px-8 pb-10">
+      <div className="sticky top-0 z-20 pt-5 pb-4 bg-zinc-50/95 dark:bg-black/95 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800 shadow-sm shadow-black/[0.03] dark:shadow-black/20">
+        <div className="flex items-center justify-between">
+          <Link
+            href="/dashboard"
+            className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          >
+            ← Practice Log
+          </Link>
+          <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">
+            Call transcript
+          </span>
+        </div>
+        <div className="mt-3">
+          <ChordChart callSid={sid} />
+        </div>
+      </div>
+
+      <div className="pt-5">
+        <CallTranscript callSid={sid} full />
+      </div>
     </div>
   );
 }

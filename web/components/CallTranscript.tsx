@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, CallTurn } from "@/lib/supabase";
-import ChordChart from "@/components/ChordChart";
 
 const LIVE_WINDOW_MS = 2 * 60 * 1000; // last turn within 2min -> still "live"
 const GROUP_GAP_MS = 20 * 1000; // consecutive same-speaker turns within 20s render as one group
@@ -81,9 +80,6 @@ export default function CallTranscript({ callSid, full = false }: { callSid: str
 
   return (
     <div>
-      <div className="sticky top-4 z-10">
-        <ChordChart callSid={callSid} />
-      </div>
       <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-zinc-200 dark:border-zinc-800">
         <span
